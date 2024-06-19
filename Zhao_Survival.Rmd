@@ -1,0 +1,215 @@
+---
+title: "ZhaoNew_Survival"
+author: "Renjie Luo"
+date: "2024-06-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+```
+
+```{r functions}
+permuted_block = function(n, block_size = 4) {
+    assignments = numeric(n)
+    treatments = c(1, 0)
+
+    num_full_blocks = n %/% block_size
+    remaining_patients = n %% block_size
+
+  if (remaining_patients %% 2 != 0) {
+    stop("Patient number must be even.")
+  }
+
+  for (i in 1:num_full_blocks) {
+    block = rep(treatments, each = block_size / length(treatments))
+    assignments[((i - 1) * block_size + 1):(i * block_size)] = sample(block)
+  }
+
+  if (remaining_patients == 2) {
+    last_block = sample(c("A", "B"))
+    assignments[(n - 1):n] = last_block
+  }
+
+  return(assignments)
+}
+
+Zhao_generate_data = function(n, m0 = 40, k, betaA,betaB) {
+  t = c(permuted_block(2 * m0), rep(NA, n - 2 * m0))
+  X = sample(c(1, -1), n, replace = T)
+  Z = replicate(k, sample(c(1, -1), n, replace = T))
+  survival_mean=exp(cbind(1,X,Z)%*%betaA*t+cbind(1,X,Z)%*%betaB*(1-t))
+  S=c(rexp(2*m0,rate=1/survival_mean[1:2*m0]), rep(NA, n - 2 * m0))
+  R=runif(n,0,1)
+  D=rep(1.5936,n)
+  C=runif(n,0,1.5936)
+  E=pmin(S[1:2*m0],C[1:2*m0])+R[1:2*m0]
+  E=ifelse(E<=D[1:2*m0] & S[1:2*m0]<=C[1:2*m0],1,0)
+  
+  patients=cbind(X, Z, S, t,R,D,C,E)
+  colnames(patients)[1]="X"
+  colnames(patients)[2:(1+k)]=paste0("Z",1:k)
+  colnames(patients)[2+k]="S"
+  colnames(patients)[3+k]="t"
+  colnames(patients)[4+k]="R"
+  colnames(patients)[5+k]="D"
+  colnames(patients)[6+k]="C"
+  colnames(patients)[7+k]="E"
+  return(patients)
+}
+
+find_mle_theta = function(data, init_theta) {
+  neg_log_likelihood = function(theta, data) {
+    t = pmin(data[,"S"],data[,"C"])
+    z = cbind(1, data[,1:3])
+    delta= t==data[,"S"]
+    lambda = exp(z %*% theta)
+    log_likelihood = -sum(delta * log(lambda) + t / lambda)
+    return(-log_likelihood)
+  }
+  result = optim(init_theta, neg_log_likelihood, data = data, method = "BFGS")
+  return(result$par)
+}
+
+Pcencor=function(lambda,R){
+D = 1.5936
+return(1 - (lambda / D) + exp(-D / lambda) * (lambda/ (D * R)) * (exp(R / lambda) * (2 * lambda - R) - 2 * lambda))
+}
+```
+
+```{r}
+ZhaoNew_Survival = function(data,
+                   betaA,
+                   betaB,
+                   m0 = 40,
+                   p = 0.8,
+                   omega
+                   ) {
+  k=2
+  for (r in (2 * m0 + 1):nrow(data)) {
+    Xn = data[r, 1]
+    Zn = data[r, 2:3]
+    data_before = data[1:(r - 1), ]
+    data_before_Xn_1=data_before[data_before[, "X"]==Xn&data_before[, "t"]==1 , ]
+    data_before_Xn_0=data_before[data_before[, "X"]==Xn&data_before[, "t"]==0,]
+    
+    if(nrow(data_before_Xn_1)==0|nrow(data_before_Xn_0)==0){
+      theta_A_Xnhat=betaA
+      theta_B_Xnhat=betaB
+    } else{
+    theta_A_Xnhat=find_mle_theta(data=data_before_Xn_1,init_theta=betaA)
+    theta_B_Xnhat=find_mle_theta(data=data_before_Xn_0,init_theta=betaB)
+    }
+
+    data_before_1 = rbind(data_before, data[r, ])
+    data_before_1[r, "t"] = 1
+    
+    data_before_2 = rbind(data_before, data[r, ])
+    data_before_2[r, "t"] = 0
+    
+    lambda_hat_Xn1=exp(c(1,data_before_1[r,1:3])%*%theta_A_Xnhat)
+    lambda_hat_Xn0=exp(c(1,data_before_2[r,1:3])%*%theta_B_Xnhat)
+    
+    epsilon_hat_Xn1=Pcencor(lambda_hat_Xn1,data[r,"R"])
+    epsilon_hat_Xn0=Pcencor(lambda_hat_Xn0,data[r,"R"])
+    
+    rho=sqrt(lambda_hat_Xn1^3/epsilon_hat_Xn1)/
+      (sqrt(lambda_hat_Xn1^3/epsilon_hat_Xn1)+
+         sqrt(lambda_hat_Xn0^3/epsilon_hat_Xn0))
+    
+
+    Dn1 = sum(data_before_1[, "t"] == 1 &
+                data_before_1[, "X"] == Xn) - rho * sum(data_before_1[, "X"] == Xn)
+    Dn2 = sum(data_before_2[, "t"] == 1 &
+                data_before_2[, "X"] == Xn) - rho * sum(data_before_2[, "X"] == Xn)
+
+    Dn1k = numeric()
+    Dn2k = numeric()
+    for (cov in 1:k) {
+      append(
+        Dn1k,
+        sum(
+          data_before_1[, "t"] == 1 &
+            data_before_1[, "X"] == Xn &
+            data_before_1[, paste0("Z", cov)] == Zn[cov]
+        ) -
+          rho * sum(data_before_1[, "X"] == Xn &
+                      data_before_1[, paste0("Z", cov)] == Zn[cov])
+      )
+
+      append(
+        Dn2k,
+        sum(
+          data_before_2[, "t"] == 1 &
+            data_before_2[, "X"] == Xn &
+            data_before_2[, paste0("Z", cov)] == Zn[cov]
+        ) -
+          rho * sum(data_before_2[, "X"] == Xn &
+                      data_before_2[, paste0("Z", cov)] == Zn[cov])
+      )
+    }
+
+    Dn1k1k2 = sum(data_before_1[, "t"] == 1 &
+                    data_before_1[, "X"] == Xn &
+                    setequal(data_before_1[, paste0("Z", 1:k)], Zn)) -
+      rho * sum(data_before_1[, "X"] == Xn &
+                  setequal(data_before_1[, paste0("Z", 1:k)], Zn))
+
+    Dn2k1k2 = sum(data_before_2[, "t"] == 1 &
+                    data_before_2[, "X"] == Xn &
+                    setequal(data_before_2[, paste0("Z", 1:k)], Zn)) -
+      rho * sum(data_before_2[, "X"] == Xn &
+                  setequal(data_before_2[, paste0("Z", 1:k)], Zn))
+
+    Imbn1 = omega[1] * Dn1 ^ 2 + sum(omega[2:(length(omega) - 1)] * Dn1k ^
+                                       2) + omega[length(omega)] * Dn1k1k2 ^ 2
+    Imbn2 = omega[1] * Dn2 ^ 2 + sum(omega[2:(length(omega) - 1)] * Dn2k ^
+                                       2) + omega[length(omega)] * Dn2k1k2 ^ 2
+
+    if (is.na(Imbn1 > Imbn2) |
+        is.na(Imbn1 < Imbn2) |
+        is.na(Imbn1 == Imbn2)) {
+      data[r, "t"] = sample(c(1, 0), 1, prob = c(0.5, 0.5))
+    }
+    else if (Imbn1 > Imbn2) {
+      data[r, "t"] = sample(c(1, 0), 1, prob = c(1 - p, p))
+    }
+    else if (Imbn1 == Imbn2) {
+      data[r, "t"] = sample(c(1, 0), 1, prob = c(0.5, 0.5))
+    }
+    else if (Imbn1 < Imbn2) {
+      data[r, "t"] = sample(c(1, 0), 1, prob = c(p, 1 - p))
+    }
+      
+      exp_mean=exp(c(1,data[r, 1:3])%*%betaA*data[r, "t"]+c(1,data[r, 1:3])%*%betaB*(1-data[r, "t"]))
+      data[r, "S"] =rexp(1,rate=1/exp_mean)
+      data[r, "E"] =ifelse(min(data[r,"S"],data[r,"C"])+data[r,"R"]<=data[r,"D"]&data[r,"S"]<=data[r,"C"],1,0)
+    }
+
+    return(data)
+
+}
+```
+
+```{r}
+pts_list <- foreach(i = 1:100, .export = ls(envir = globalenv())) %dopar% {
+  ZhaoNew_Survival(
+    data = Zhao_generate_data(
+      400,
+      k = 2,
+      betaA = c(-1.95, -0.81, 0.038, 0.001),
+      betaB = c(-1.25, -0.173, 0.015, 0.004)
+    ),
+    betaA = c(-1.95, -0.81, 0.038, 0.001),
+    betaB = c(-1.25, -0.173, 0.015, 0.004),
+    omega = rep(0.25, 4)
+  )
+  
+}
+
+p3=pts_list[[3]]
+sum(p3[,"E"])
+```
+
+
+
