@@ -9,10 +9,33 @@ output: html_document
 knitr::opts_chunk$set(echo = F)
 ```
 
+```{r}
+#Windows
+#save.image(file="C:/Users/luore/iCloudDrive/Study/GWU/Paper Prof. Hu/Reproductions/Zhao_survival/ZhaoSurvival.RData")
+
+#load("C:/Users/luore/iCloudDrive/Study/GWU/Paper Prof. Hu/Reproductions/Zhao_survival/ZhaoSurvival.RData")
+
+#Mac
+#save.image(file="/Users/renjieluo/Library/Mobile Documents/com~apple~CloudDocs/Study/GWU/Paper Prof. Hu/Reproductions/Zhao_survival/ZhaoSurvival.RData")
+
+#load("/Users/renjieluo/Library/Mobile Documents/com~apple~CloudDocs/Study/GWU/Paper Prof. Hu/Reproductions/Zhao_survival/ZhaoSurvival.RData")
+
+
+```
+
+```{r}
+library(doParallel)
+library(foreach)
+library(carat)
+library(survival)
+library(openxlsx)
+```
+
+
 ```{r functions}
 permuted_block = function(n, block_size = 4) {
     assignments = numeric(n)
-    treatments = c(1, 0)
+    ts = c(1, 0)
 
     num_full_blocks = n %/% block_size
     remaining_patients = n %% block_size
@@ -22,7 +45,7 @@ permuted_block = function(n, block_size = 4) {
   }
 
   for (i in 1:num_full_blocks) {
-    block = rep(treatments, each = block_size / length(treatments))
+    block = rep(ts, each = block_size / length(ts))
     assignments[((i - 1) * block_size + 1):(i * block_size)] = sample(block)
   }
 
@@ -34,34 +57,31 @@ permuted_block = function(n, block_size = 4) {
   return(assignments)
 }
 
-Zhao_generate_data = function(n, m0 = 40, k, betaA,betaB) {
+Zhao_generate_data = function(n, m0 = 40, k, beta) {
   t = c(permuted_block(2 * m0), rep(NA, n - 2 * m0))
   X = sample(c(1, -1), n, replace = T)
   Z = replicate(k, sample(c(1, -1), n, replace = T))
-  survival_mean=exp(cbind(1,X,Z)%*%betaA*t+cbind(1,X,Z)%*%betaB*(1-t))
-  S=c(rexp(2*m0,rate=1/survival_mean[1:2*m0]), rep(NA, n - 2 * m0))
+  survival_mean=exp(cbind(t,(1-t),X,X*t,Z)%*%beta)
+  S=c(rexp(2*m0,rate=1/survival_mean[1:(2*m0)]), rep(NA, n - 2 * m0))
   R=runif(n,0,1)
   D=rep(1.5936,n)
   C=runif(n,0,1.5936)
-  E=pmin(S[1:2*m0],C[1:2*m0])+R[1:2*m0]
-  E=ifelse(E<=D[1:2*m0] & S[1:2*m0]<=C[1:2*m0],1,0)
+  E=pmin(S[1:(2*m0)],C[1:(2*m0)])+R[1:(2*m0)]
+  E=c(ifelse(E<=D[1:(2*m0)] & S[1:(2*m0)]<=C[1:(2*m0)],1,0),rep(NA, n - 2 * m0))
   
   patients=cbind(X, Z, S, t,R,D,C,E)
   colnames(patients)[1]="X"
   colnames(patients)[2:(1+k)]=paste0("Z",1:k)
-  colnames(patients)[2+k]="S"
-  colnames(patients)[3+k]="t"
-  colnames(patients)[4+k]="R"
-  colnames(patients)[5+k]="D"
-  colnames(patients)[6+k]="C"
-  colnames(patients)[7+k]="E"
+  colnames(patients)[(2+k):ncol(patients)]=c("S","t","R","D","C","E")
   return(patients)
 }
+
+#Zhao_generate_data(n=400,m0=40,k=2,beta=c(0.5,0.5,2, -0.5, 1, 1))
 
 find_mle_theta = function(data, init_theta) {
   neg_log_likelihood = function(theta, data) {
     t = pmin(data[,"S"],data[,"C"])
-    z = cbind(1, data[,1:3])
+    z = cbind(data[,"t"],(1-data[,"t"]), data[,"X"],data[,"X"]*data[,"t"],data[,2:3])
     delta= t==data[,"S"]
     lambda = exp(z %*% theta)
     log_likelihood = -sum(delta * log(lambda) + t / lambda)
@@ -75,12 +95,97 @@ Pcencor=function(lambda,R){
 D = 1.5936
 return(1 - (lambda / D) + exp(-D / lambda) * (lambda/ (D * R)) * (exp(R / lambda) * (2 * lambda - R) - 2 * lambda))
 }
+# 
+# epA_row=function(row,theta_hatA){
+#   zrow=c(row["t"],(1-row["t"]),row["X"],row["t"]*row["X"],row["Z1"],row["Z2"])
+#   lambda_A=exp(zrow%*%theta_hatA)
+#   ep=Pcencor(lambda_A,row["R"])
+#   return(ep)
+# }
+# 
+# epB_row=function(row,theta_hatB){
+#   zrow=c(row["t"],(1-row["t"]),row["X"],row["t"]*row["X"],row["Z1"],row["Z2"])
+#   lambda_B=exp(zrow%*%theta_hatB)
+#   ep=Pcencor(lambda_B,row["R"])
+#   return(ep)
+# }
+
+#row=data[r,]
+#calculate pihat for one row
+pi_row=function(row,theta_hatA,theta_hatB,rCurrent){
+  if (rCurrent){
+  row1=row;row1["t"]=1;row0=row;row0["t"]=0
+  zrow1=c(row1["t"],(1-row1["t"]),row1["X"],row1["t"]*row1["X"],row1["Z1"],row1["Z2"])
+  zrow0=c(row0["t"],(1-row0["t"]),row0["X"],row0["t"]*row0["X"],row0["Z1"],row0["Z2"])
+
+  lambda_A=exp(zrow1%*%theta_hatA)
+  lambda_B=exp(zrow0%*%theta_hatB)
+  } else{
+  zrow=c(row["t"],(1-row["t"]),row["X"],row["t"]*row["X"],row["Z1"],row["Z2"])
+
+  lambda_A=exp(zrow%*%theta_hatA)
+  lambda_B=exp(zrow%*%theta_hatB)
+  }
+  epA=Pcencor(lambda_A,row["R"])
+  epB=Pcencor(lambda_B,row["R"])
+  pi=(sqrt(lambda_A^3/epA))/(sqrt(lambda_A^3/epA)+sqrt(lambda_B^3/epB))
+  return(pi)
+}
+
+#function for allocation probability
+allocation_prob <- function(pi_m, rho_m,m,v,pts_A) {
+  NA_m =sum(pts_A[,"t"])/(m-1)
+  NB_m =1-NA_m
+  term1 <- (rho_m / NA_m )^v
+  term2 <- ((1 - rho_m) / NB_m )^v
+  # Compute phi_m+1
+  phi_m1 <- (pi_m * term1) / (pi_m * term1 + (1 - pi_m) * term2)
+  return(phi_m1)
+}
+
+list_summary=function(list){
+  NA_0A=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1)}
+  NA_0B=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0)}
+  NA_1A=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1)}
+  NA_1B=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0)}
+  
+  E_0A=function(dat){sum(dat[,"E"]==1&dat[,"X"]==1)}
+  E_0B=function(dat){sum(dat[,"E"]==1&dat[,"X"]==-1)}
+
+  
+  NA_0A_res=lapply(list,NA_0A)
+  NA_0B_res=lapply(list,NA_0B)
+  NA_1A_res=lapply(list,NA_1A)
+  NA_1B_res=lapply(list,NA_1B)
+  E_0A_res=lapply(list,E_0A)
+  E_0B_res=lapply(list,E_0B)
+  # E_1A_res=lapply(list,E_1A)
+  # E_1B_res=lapply(list,E_1B)
+  
+  res=c(
+      paste0(round(mean(do.call(c, NA_0A_res)),0),"(",round(sd(do.call(c, NA_0A_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_0B_res)),0),"(",round(sd(do.call(c, NA_0B_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_1A_res)),0),"(",round(sd(do.call(c, NA_1A_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_1B_res)),0),"(",round(sd(do.call(c, NA_1B_res)),1),")"),
+      round(mean(do.call(c, E_0A_res)),0),
+      round(mean(do.call(c, E_0B_res)),0)
+      # mean(do.call(c, E_1A_res)),
+      # mean(do.call(c, E_1B_res))
+    )
+  return(res)
+}
 ```
 
 ```{r}
+#beta=c(0.5,0.5,0.2, -0.1, 0.5, 0.5)
+#data=Zhao_generate_data(n=400, m0 = 40, k=2, beta=beta)
+#r=81
+#data=d1
+#n=400
+
+
 ZhaoNew_Survival = function(data,
-                   betaA,
-                   betaB,
+                   beta,
                    m0 = 40,
                    p = 0.8,
                    omega
@@ -94,11 +199,11 @@ ZhaoNew_Survival = function(data,
     data_before_Xn_0=data_before[data_before[, "X"]==Xn&data_before[, "t"]==0,]
     
     if(nrow(data_before_Xn_1)==0|nrow(data_before_Xn_0)==0){
-      theta_A_Xnhat=betaA
-      theta_B_Xnhat=betaB
+      theta_A_Xnhat=beta
+      theta_B_Xnhat=beta
     } else{
-    theta_A_Xnhat=find_mle_theta(data=data_before_Xn_1,init_theta=betaA)
-    theta_B_Xnhat=find_mle_theta(data=data_before_Xn_0,init_theta=betaB)
+    theta_A_Xnhat=find_mle_theta(data=data_before_Xn_1,init_theta=beta)
+    theta_B_Xnhat=find_mle_theta(data=data_before_Xn_0,init_theta=beta)
     }
 
     data_before_1 = rbind(data_before, data[r, ])
@@ -107,8 +212,26 @@ ZhaoNew_Survival = function(data,
     data_before_2 = rbind(data_before, data[r, ])
     data_before_2[r, "t"] = 0
     
-    lambda_hat_Xn1=exp(c(1,data_before_1[r,1:3])%*%theta_A_Xnhat)
-    lambda_hat_Xn0=exp(c(1,data_before_2[r,1:3])%*%theta_B_Xnhat)
+    lambda_hat_Xn1 = exp(
+      c(
+        data_before_1[r, "t"],
+        (1 - data_before_1[r, "t"]),
+        data_before_1[r, "X"],
+        data_before_1[r, "t"] * data_before_1[r, "X"],
+        data_before_1[r, "Z1"],
+        data_before_1[r, "Z2"]
+      ) %*% theta_A_Xnhat
+    )
+    lambda_hat_Xn0 = exp(
+      c(
+        data_before_2[r, "t"],
+        (1 - data_before_2[r, "t"]),
+        data_before_2[r, "X"],
+        data_before_2[r, "t"] * data_before_2[r, "X"],
+        data_before_2[r, "Z1"],
+        data_before_2[r, "Z2"]
+      ) %*% theta_B_Xnhat
+    )
     
     epsilon_hat_Xn1=Pcencor(lambda_hat_Xn1,data[r,"R"])
     epsilon_hat_Xn0=Pcencor(lambda_hat_Xn0,data[r,"R"])
@@ -181,7 +304,8 @@ ZhaoNew_Survival = function(data,
       data[r, "t"] = sample(c(1, 0), 1, prob = c(p, 1 - p))
     }
       
-      exp_mean=exp(c(1,data[r, 1:3])%*%betaA*data[r, "t"]+c(1,data[r, 1:3])%*%betaB*(1-data[r, "t"]))
+      exp_mean=exp(c(data[r, "t"],(1-data[r, "t"]),data[r, "X"],data[r, "t"]*data[r, "X"],
+                     data[r, "Z1"],data[r, "Z2"])%*%beta)
       data[r, "S"] =rexp(1,rate=1/exp_mean)
       data[r, "E"] =ifelse(min(data[r,"S"],data[r,"C"])+data[r,"R"]<=data[r,"D"]&data[r,"S"]<=data[r,"C"],1,0)
     }
@@ -192,24 +316,357 @@ ZhaoNew_Survival = function(data,
 ```
 
 ```{r}
-pts_list <- foreach(i = 1:100, .export = ls(envir = globalenv())) %dopar% {
-  ZhaoNew_Survival(
-    data = Zhao_generate_data(
-      400,
-      k = 2,
-      betaA = c(-1.95, -0.81, 0.038, 0.001),
-      betaB = c(-1.25, -0.173, 0.015, 0.004)
-    ),
-    betaA = c(-1.95, -0.81, 0.038, 0.001),
-    betaB = c(-1.25, -0.173, 0.015, 0.004),
-    omega = rep(0.25, 4)
-  )
+Rosenberger = function(data,
+                       beta,
+                       m0 = 40) {
+  for (r in (2 * m0 + 1):nrow(data)) {
+    Xn = data[r, 1]
+    Zn = data[r, 2:3]
+    data_before = data[1:(r - 1), ]
+    #find mle for k=A and k=B
+    data_before_A = data_before[data_before[, "t"] == 1, ]
+    data_before_B = data_before[data_before[, "t"] == 0,]
+    
+    theta_hatA = find_mle_theta(beta, data = data_before_A)
+    theta_hatB = find_mle_theta(beta, data = data_before_B)
+    
+    #
+    # data_before_1 = rbind(data_before, data[r, ])
+    # data_before_1[r, "t"] = 1
+    #
+    # data_before_0 = rbind(data_before, data[r, ])
+    # data_before_2[r, "t"] = 0
+    
+    # lambda_hat1 = exp(
+    #   c(
+    #     data_before_A[, "t"],
+    #     (1 - data_before_A[, "t"]),
+    #     data_before_A[r, "X"],
+    #     data_before_A[r, "t"] * data_before_A[r, "X"],
+    #     data_before_A[r, "Z1"],
+    #     data_before_A[r, "Z2"]
+    #   ) %*% theta_hatA
+    # )
+    # 
+    # lambda_hat0 = exp(
+    #   c(
+    #     data_before_B[, "t"],
+    #     (1 - data_before_B[, "t"]),
+    #     data_before_B[, "X"],
+    #     data_before_B[, "t"] * data_before_B[, "X"],
+    #     data_before_B[, "Z1"],
+    #     data_before_B[, "Z2"]
+    #   ) %*% theta_hatB
+    # )
+    
+    pi_m = pi_row(data[r,], theta_hatA = theta_hatA, theta_hatB = theta_hatB,rCurrent = T)
+    tho_m = mean(apply(
+      data[1:(r - 1),],
+      1,
+      pi_row,
+      theta_hatA = theta_hatA,
+      theta_hatB = theta_hatB,
+      rCurrent=F
+    ))
+    
+    
+    prob = allocation_prob(pi_m,
+                           tho_m,
+                           m = r,
+                           v = 2,
+                           pts_A = data_before_A)
+    if (is.na(prob)){prob=0.5}
+    data[r, "t"] = sample(c(1, 0), 1, replace = T, c(prob, 1 - prob))
+    
+    exp_mean = exp(c(data[r, "t"], (1 - data[r, "t"]), data[r, "X"], data[r, "t"] *
+                       data[r, "X"],
+                     data[r, "Z1"], data[r, "Z2"]) %*% beta)
+    data[r, "S"] = rexp(1, rate = 1 / exp_mean)
+    data[r, "E"] = ifelse(min(data[r, "S"], data[r, "C"]) + data[r, "R"] <=
+                            data[r, "D"] &
+                            data[r, "S"] <= data[r, "C"], 1, 0)
+    
+  }
   
+  return(data)
 }
 
-p3=pts_list[[3]]
-sum(p3[,"E"])
 ```
 
 
+```{r}
+no_cores <- detectCores()
+registerDoParallel(cores=no_cores)
+
+set.seed(123)
+NEW_pts_list <- foreach(i = 1:1000, .export = ls(envir = globalenv())) %dopar% {
+  ZhaoNew_Survival(
+    data = Zhao_generate_data(
+      n = 1000,
+      k = 2,
+      beta=c(0.5,0.5,2, -0.5, 1, 1)
+    ),
+    beta=c(0.5,0.5,2, -0.5, 1, 1),
+    omega = rep(0.25, 4)
+  )
+}
+
+
+
+```
+
+```{r}
+no_cores <- detectCores()
+registerDoParallel(cores=no_cores)
+
+set.seed(2044)
+CARA_pts_list <- foreach(i = 1:1000, .export = ls(envir = globalenv())) %dopar% {
+  Rosenberger(
+    data = Zhao_generate_data(
+      n = 1000,
+      k = 2,
+      beta=c(0.5,0.5,2, -0.5, 1, 1)
+    ),
+    beta=c(0.5,0.5,2, -0.5, 1, 1)
+  )
+}
+
+
+```
+
+
+```{r}
+no_cores <- detectCores()
+registerDoParallel(cores=no_cores)
+
+set.seed(2024)
+CAR=function(data,beta){
+  cov=data[,1:3]
+  CARres=HuHuCAR(cov)
+  data[,"t"]=ifelse(CARres$assignments=="A",1,0)
+  survival_mean=exp(cbind(data[,"t"],(1-data[,"t"]),data[,"X"],
+      data[,"X"]*data[,"t"],data[,"Z1"],data[,"Z2"])%*%beta)
+  data[,"S"]=rexp(nrow(data),rate=1/survival_mean)
+  data[,"R"]=runif(nrow(data),0,1)
+  data[,"D"]=rep(1.5936,nrow(data))
+  data[,"C"]=runif(nrow(data),0,1.5936)
+  data[,"E"]=pmin(data[,"S"],data[,"C"])+data[,"R"]
+  data[,"E"]=ifelse(data[,"E"]<=data[,"D"] & data[,"S"]<=data[,"C"],1,0)
+  
+  return(data)
+}
+
+CAR_pts_list = foreach(i = 1:1000, .export = ls(envir = globalenv()),.packages="carat") %dopar% {
+  CAR(
+    data = Zhao_generate_data(
+      1000,
+      k = 2,
+      beta=c(0.5,0.5,2, -0.5, 1, 1)
+    ),
+    beta=c(0.5,0.5,2, -0.5, 1, 1)
+  )
+}
+
+
+```
+
+
+```{r}
+no_cores <- detectCores()
+registerDoParallel(cores=no_cores)
+
+set.seed(2034)
+CR=function(data,beta){
+  data[,"t"]=sample(c(1,0),nrow(data),replace=T)
+  survival_mean=exp(cbind(data[,"t"],(1-data[,"t"]),data[,"X"],
+      data[,"X"]*data[,"t"],data[,"Z1"],data[,"Z2"])%*%beta)
+  data[,"S"]=rexp(nrow(data),rate=1/survival_mean)
+  data[,"R"]=runif(nrow(data),0,1)
+  data[,"D"]=rep(1.5936,nrow(data))
+  data[,"C"]=runif(nrow(data),0,1.5936)
+  data[,"E"]=pmin(data[,"S"],data[,"C"])+data[,"R"]
+  data[,"E"]=ifelse(data[,"E"]<=data[,"D"] & data[,"S"]<=data[,"C"],1,0)
+  
+  return(data)
+}
+
+
+CR_pts_list <- foreach(i = 1:1000, .export = ls(envir = globalenv())) %dopar% {
+  CR(
+    data = Zhao_generate_data(
+      1000,
+      k = 2,
+      beta=c(0.5,0.5,2, -0.5, 1, 1)
+    ),
+    beta=c(0.5,0.5,2, -0.5, 1, 1)
+  )
+}
+
+```
+
+```{r}
+CR_res=list_summary(CR_pts_list)
+CAR_res=list_summary(CAR_pts_list)
+CARA_res=list_summary(CARA_pts_list)
+NEW_res=list_summary(NEW_pts_list)
+```
+
+
+
+```{r}
+typeI_power = function(pts_list) {
+  l=length(get(pts_list))
+  power_vec= numeric(l)
+  for (k in 1:l){
+  typeI = numeric(1000)
+  for (i in 1:1000) {
+    model = survreg(Surv(S) ~ t + X + X:t + Z1 + Z2,
+                    data = data.frame(get(pts_list)[[k]][[i]]),
+                    dist = "exponential")
+    # Summary of the model
+    summary(model)
+
+    # Extract coefficients and covariance matrix
+    coef_est <- coef(model)
+    cov_matrix <- vcov(model)
+
+    # Extract mu1_hat and mu2_hat
+    mu1_hat <- exp(-coef_est["(Intercept)"] - coef_est["t"])
+    mu2_hat <- exp(-coef_est["(Intercept)"])
+
+    # # Calculate the standard errors for mu1_hat and mu2_hat
+    # se_mu1_hat <- sqrt(cov_matrix["(Intercept)", "(Intercept)"] + cov_matrix["t", "t"] + 2 * cov_matrix["(Intercept)", "t"]) * mu1_hat
+    # se_mu2_hat <- sqrt(cov_matrix["(Intercept)", "(Intercept)"]) * mu2_hat
+    se_mu1_hat <- sqrt(exp(-2 * (coef_est["(Intercept)"] + coef_est["t"])) *
+                         (cov_matrix["(Intercept)", "(Intercept)"] + cov_matrix["t", "t"] + 2 * cov_matrix["(Intercept)", "t"]))
+    se_mu2_hat <- sqrt(exp(-2 * coef_est["(Intercept)"]) *
+                         cov_matrix["(Intercept)", "(Intercept)"])
+
+    # Compute the Wald test statistic
+    # H0: mu1 = mu2
+    mu_diff <- mu1_hat - mu2_hat
+    se_diff <- sqrt(se_mu1_hat ^ 2 + se_mu2_hat ^ 2)
+    wald_stat <- (mu_diff / se_diff) ^ 2
+
+    # Compute the p-value
+    p_value <- 1 - pchisq(wald_stat, df = 1)
+    typeI[i] = p_value < 0.05
+  }
+
+  power_vec[k]=mean(typeI)
+  }
+ return(power_vec)
+}
+```
+
+
+```{r}
+power_data=list()
+
+no_cores <- detectCores()
+registerDoParallel(cores=no_cores)
+
+set.seed(2024)
+  power_data=foreach(i = 1:10, .export = ls(envir = globalenv()),.packages = "doParallel") %dopar% {
+    foreach(k = 1:1000, .export = ls(envir = globalenv())) %dopar% {
+      ZhaoNew_Survival(
+        data = Zhao_generate_data(
+          n = 400,
+          k = 2,
+          beta = c(0.5 + 0.05 * i, 0.5, 2, -0.5, 1, 1)
+        ),
+        beta = c(0.5 + 0.05 * i, 0.5, 2, -0.5, 1, 1),
+        omega = rep(0.25, 4)
+      )
+    }
+}
+NEW_power_data=power_data
+```
+
+```{r}
+CARA_power_data=list()
+
+no_cores <- detectCores()
+registerDoParallel(cores=no_cores)
+
+set.seed(2024)
+  CARA_power_data=foreach(i = 1:10, .export = ls(envir = globalenv()),.packages = "doParallel") %dopar% {
+    foreach(k = 1:1000, .export = ls(envir = globalenv())) %dopar% {
+      Rosenberger(
+        data = Zhao_generate_data(
+          n = 400,
+          k = 2,
+          beta = c(0.5 + 0.05 * i, 0.5, 2, -0.5, 1, 1)
+        ),
+        beta = c(0.5 + 0.05 * i, 0.5, 2, -0.5, 1, 1)
+      )
+    }
+}
+
+```
+
+
+```{r}
+set.seed(2024)
+  CAR_power_data=foreach(i = 1:10, .export = ls(envir = globalenv()),.packages = c("carat","doParallel")) %dopar% {
+    foreach(k = 1:1000, .export = ls(envir = globalenv())) %dopar% {
+      CAR(
+        data = Zhao_generate_data(
+          n = 400,
+          k = 2,
+          beta = c(0.5 + 0.05 * i, 0.5, 2, -0.5, 1, 1)
+        ),
+        beta = c(0.5 + 0.05 * i, 0.5, 2, -0.5, 1, 1)
+      )
+    }
+}
+```
+
+```{r}
+set.seed(2024)
+  CR_power_data=foreach(i = 1:10, .export = ls(envir = globalenv()),.packages = c("carat","doParallel")) %dopar% {
+    foreach(k = 1:1000, .export = ls(envir = globalenv())) %dopar% {
+      CR(
+        data = Zhao_generate_data(
+          n = 400,
+          k = 2,
+          beta = c(0.5 + 0.05 * i, 0.5, 2, -0.5, 1, 1)
+        ),
+        beta = c(0.5 + 0.05 * i, 0.5, 2, -0.5, 1, 1)
+      )
+    }
+}
+```
+
+
+
+```{r}
+CR_typelist=list()
+CR_typelist[[1]]=CR_pts_list
+CAR_typelist=list()
+CAR_typelist[[1]]=CAR_pts_list
+CARA_typelist=list()
+CARA_typelist[[1]]=CARA_pts_list
+NEW_typelist=list()
+NEW_typelist[[1]]=NEW_pts_list
+
+CR_typeI=typeI_power("CR_typelist")
+CAR_typeI=typeI_power("CAR_typelist")
+CARA_typeI=typeI_power("CARA_typelist")
+NEW_typeI=typeI_power("NEW_typelist")
+
+NEW_power=typeI_power("power_data")
+CAR_power=typeI_power("CAR_power_data")
+CARA_power=typeI_power("CARA_power_data")
+CR_power=typeI_power("CR_power_data")
+```
+
+```{r}
+res_table=data.frame(rbind(CR_res,CAR_res,CARA_res,NEW_res))
+power_table=data.frame(cbind(c(CR_typeI,CR_power),c(CAR_typeI,CAR_power),
+                  c(CARA_typeI,CARA_power),c(NEW_typeI,NEW_power)))
+
+write.xlsx(res_table, file="C:/Users/luore/iCloudDrive/Study/GWU/Paper Prof. Hu/Reproductions/Zhao_survival/event_res.xlsx", overwrite = TRUE)
+write.xlsx(power_table, file="C:/Users/luore/iCloudDrive/Study/GWU/Paper Prof. Hu/Reproductions/Zhao_survival/power_res.xlsx", overwrite = TRUE)
+```
 
