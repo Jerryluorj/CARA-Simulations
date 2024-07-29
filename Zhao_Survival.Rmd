@@ -144,34 +144,187 @@ allocation_prob <- function(pi_m, rho_m,m,v,pts_A) {
 }
 
 list_summary=function(list){
-  NA_0A=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1)}
-  NA_0B=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0)}
-  NA_1A=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1)}
-  NA_1B=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0)}
+  NA_0AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1)}
+  NA_0AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0)}
+  NA_0BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1)}
+  NA_0BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0)}
   
-  E_0A=function(dat){sum(dat[,"E"]==1&dat[,"X"]==1)}
-  E_0B=function(dat){sum(dat[,"E"]==1&dat[,"X"]==-1)}
+  NA_1AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z1"]==1)}
+  NA_1AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z1"]==1)}
+  NA_1BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z1"]==1)}
+  NA_1BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z1"]==1)}
+  
+  NA_2AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z2"]==-1)}
+  NA_2AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z2"]==-1)}
+  NA_2BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z2"]==-1)}
+  NA_2BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z2"]==-1)}
+  
+  NA_3AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z1"]==1&dat[,"Z2"]==1)}
+  NA_3AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z1"]==1&dat[,"Z2"]==1)}
+  NA_3BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z1"]==1&dat[,"Z2"]==1)}
+  NA_3BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z1"]==1&dat[,"Z2"]==1)}
+  
+    NA_4AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z1"]==-1&dat[,"Z2"]==-1)}
+  NA_4AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z1"]==-1&dat[,"Z2"]==-1)}
+  NA_4BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z1"]==-1&dat[,"Z2"]==-1)}
+  NA_4BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z1"]==-1&dat[,"Z2"]==-1)}
+  
+  # E_0A=function(dat){sum(dat[,"E"]==1&dat[,"X"]==1)}
+  # E_0B=function(dat){sum(dat[,"E"]==1&dat[,"X"]==-1)}
 
   
-  NA_0A_res=lapply(list,NA_0A)
-  NA_0B_res=lapply(list,NA_0B)
-  NA_1A_res=lapply(list,NA_1A)
-  NA_1B_res=lapply(list,NA_1B)
-  E_0A_res=lapply(list,E_0A)
-  E_0B_res=lapply(list,E_0B)
+  NA_0AA_res=lapply(list,NA_0AA)
+  NA_0AB_res=lapply(list,NA_0AB)
+  NA_0BA_res=lapply(list,NA_0BA)
+  NA_0BB_res=lapply(list,NA_0BB)
+  
+  NA_1AA_res=lapply(list,NA_1AA)
+  NA_1AB_res=lapply(list,NA_1AB)
+  NA_1BA_res=lapply(list,NA_1BA)
+  NA_1BB_res=lapply(list,NA_1BB)
+  
+  NA_2AA_res=lapply(list,NA_2AA)
+  NA_2AB_res=lapply(list,NA_2AB)
+  NA_2BA_res=lapply(list,NA_2BA)
+  NA_2BB_res=lapply(list,NA_2BB)
+  
+  NA_3AA_res=lapply(list,NA_3AA)
+  NA_3AB_res=lapply(list,NA_3AB)
+  NA_3BA_res=lapply(list,NA_3BA)
+  NA_3BB_res=lapply(list,NA_3BB)
+  
+  NA_4AA_res=lapply(list,NA_4AA)
+  NA_4AB_res=lapply(list,NA_4AB)
+  NA_4BA_res=lapply(list,NA_4BA)
+  NA_4BB_res=lapply(list,NA_4BB)
+  # E_0A_res=lapply(list,E_0A)
+  # E_0B_res=lapply(list,E_0B)
   # E_1A_res=lapply(list,E_1A)
   # E_1B_res=lapply(list,E_1B)
   
-  res=c(
-      paste0(round(mean(do.call(c, NA_0A_res)),0),"(",round(sd(do.call(c, NA_0A_res)),1),")"),
-            paste0(round(mean(do.call(c, NA_0B_res)),0),"(",round(sd(do.call(c, NA_0B_res)),1),")"),
-            paste0(round(mean(do.call(c, NA_1A_res)),0),"(",round(sd(do.call(c, NA_1A_res)),1),")"),
-            paste0(round(mean(do.call(c, NA_1B_res)),0),"(",round(sd(do.call(c, NA_1B_res)),1),")"),
-      round(mean(do.call(c, E_0A_res)),0),
-      round(mean(do.call(c, E_0B_res)),0)
+  res=cbind(c(
+      paste0(round(mean(do.call(c, NA_0AA_res)),0),"(",round(sd(do.call(c, NA_0AA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_0AB_res)),0),"(",round(sd(do.call(c, NA_0AB_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_0BA_res)),0),"(",round(sd(do.call(c, NA_0BA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_0BB_res)),0),"(",round(sd(do.call(c, NA_0BB_res)),1),")")),
+      
+            c(paste0(round(mean(do.call(c, NA_1AA_res)),0),"(",round(sd(do.call(c, NA_1AA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_1AB_res)),0),"(",round(sd(do.call(c, NA_1AB_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_1BA_res)),0),"(",round(sd(do.call(c, NA_1BA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_1BB_res)),0),"(",round(sd(do.call(c, NA_1BB_res)),1),")")),
+      
+              c(paste0(round(mean(do.call(c, NA_2AA_res)),0),"(",round(sd(do.call(c, NA_2AA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_2AB_res)),0),"(",round(sd(do.call(c, NA_2AB_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_2BA_res)),0),"(",round(sd(do.call(c, NA_2BA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_2BB_res)),0),"(",round(sd(do.call(c, NA_2BB_res)),1),")")),
+      
+              c(paste0(round(mean(do.call(c, NA_3AA_res)),0),"(",round(sd(do.call(c, NA_3AA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_3AB_res)),0),"(",round(sd(do.call(c, NA_3AB_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_3BA_res)),0),"(",round(sd(do.call(c, NA_3BA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_3BB_res)),0),"(",round(sd(do.call(c, NA_3BB_res)),1),")")),
+      
+                c(paste0(round(mean(do.call(c, NA_4AA_res)),0),"(",round(sd(do.call(c, NA_4AA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_4AB_res)),0),"(",round(sd(do.call(c, NA_4AB_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_4BA_res)),0),"(",round(sd(do.call(c, NA_4BA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_4BB_res)),0),"(",round(sd(do.call(c, NA_4BB_res)),1),")"))
+      )
+      # round(mean(do.call(c, E_0A_res)),0),
+      # round(mean(do.call(c, E_0B_res)),0)
       # mean(do.call(c, E_1A_res)),
       # mean(do.call(c, E_1B_res))
-    )
+  return(res)
+}
+
+
+event_summary=function(list){
+  E_0AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1)&dat[,"E"]==1}
+  E_0AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"E"]==1)}
+  E_0BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"E"]==1)}
+  E_0BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"E"]==1)}
+  
+  E_1AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z1"]==1&dat[,"E"]==1)}
+  E_1AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z1"]==1&dat[,"E"]==1)}
+  E_1BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z1"]==1&dat[,"E"]==1)}
+  E_1BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z1"]==1&dat[,"E"]==1)}
+  
+  E_2AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  E_2AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  E_2BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  E_2BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  
+  E_3AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z1"]==1&dat[,"Z2"]==1&dat[,"E"]==1)}
+  E_3AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z1"]==1&dat[,"Z2"]==1&dat[,"E"]==1)}
+  E_3BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z1"]==1&dat[,"Z2"]==1&dat[,"E"]==1)}
+  E_3BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z1"]==1&dat[,"Z2"]==1&dat[,"E"]==1)}
+  
+    E_4AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z1"]==-1&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  E_4AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z1"]==-1&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  E_4BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z1"]==-1&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  E_4BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z1"]==-1&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  
+  # E_0A=function(dat){sum(dat[,"E"]==1&dat[,"X"]==1)}
+  # E_0B=function(dat){sum(dat[,"E"]==1&dat[,"X"]==-1)}
+
+  
+  E_0AA_res=lapply(list,E_0AA)
+  E_0AB_res=lapply(list,E_0AB)
+  E_0BA_res=lapply(list,E_0BA)
+  E_0BB_res=lapply(list,E_0BB)
+  
+  E_1AA_res=lapply(list,E_1AA)
+  E_1AB_res=lapply(list,E_1AB)
+  E_1BA_res=lapply(list,E_1BA)
+  E_1BB_res=lapply(list,E_1BB)
+  
+  E_2AA_res=lapply(list,E_2AA)
+  E_2AB_res=lapply(list,E_2AB)
+  E_2BA_res=lapply(list,E_2BA)
+  E_2BB_res=lapply(list,E_2BB)
+  
+  E_3AA_res=lapply(list,E_3AA)
+  E_3AB_res=lapply(list,E_3AB)
+  E_3BA_res=lapply(list,E_3BA)
+  E_3BB_res=lapply(list,E_3BB)
+  
+  E_4AA_res=lapply(list,E_4AA)
+  E_4AB_res=lapply(list,E_4AB)
+  E_4BA_res=lapply(list,E_4BA)
+  E_4BB_res=lapply(list,E_4BB)
+  # E_0A_res=lapply(list,E_0A)
+  # E_0B_res=lapply(list,E_0B)
+  # E_1A_res=lapply(list,E_1A)
+  # E_1B_res=lapply(list,E_1B)
+  
+  res=cbind(c(
+      paste0(round(mean(do.call(c, E_0AA_res)),0),"(",round(sd(do.call(c, E_0AA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_0AB_res)),0),"(",round(sd(do.call(c, E_0AB_res)),1),")"),
+            paste0(round(mean(do.call(c, E_0BA_res)),0),"(",round(sd(do.call(c, E_0BA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_0BB_res)),0),"(",round(sd(do.call(c, E_0BB_res)),1),")")),
+      
+            c(paste0(round(mean(do.call(c, E_1AA_res)),0),"(",round(sd(do.call(c, E_1AA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_1AB_res)),0),"(",round(sd(do.call(c, E_1AB_res)),1),")"),
+            paste0(round(mean(do.call(c, E_1BA_res)),0),"(",round(sd(do.call(c, E_1BA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_1BB_res)),0),"(",round(sd(do.call(c, E_1BB_res)),1),")")),
+      
+              c(paste0(round(mean(do.call(c, E_2AA_res)),0),"(",round(sd(do.call(c, E_2AA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_2AB_res)),0),"(",round(sd(do.call(c, E_2AB_res)),1),")"),
+            paste0(round(mean(do.call(c, E_2BA_res)),0),"(",round(sd(do.call(c, E_2BA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_2BB_res)),0),"(",round(sd(do.call(c, E_2BB_res)),1),")")),
+      
+              c(paste0(round(mean(do.call(c, E_3AA_res)),0),"(",round(sd(do.call(c, E_3AA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_3AB_res)),0),"(",round(sd(do.call(c, E_3AB_res)),1),")"),
+            paste0(round(mean(do.call(c, E_3BA_res)),0),"(",round(sd(do.call(c, E_3BA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_3BB_res)),0),"(",round(sd(do.call(c, E_3BB_res)),1),")")),
+      
+                c(paste0(round(mean(do.call(c, E_4AA_res)),0),"(",round(sd(do.call(c, E_4AA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_4AB_res)),0),"(",round(sd(do.call(c, E_4AB_res)),1),")"),
+            paste0(round(mean(do.call(c, E_4BA_res)),0),"(",round(sd(do.call(c, E_4BA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_4BB_res)),0),"(",round(sd(do.call(c, E_4BB_res)),1),")"))
+      )
+      # round(mean(do.call(c, E_0A_res)),0),
+      # round(mean(do.call(c, E_0B_res)),0)
+      # mean(do.call(c, E_1A_res)),
+      # mean(do.call(c, E_1B_res))
   return(res)
 }
 ```
@@ -509,6 +662,16 @@ CR_res=list_summary(CR_pts_list)
 CAR_res=list_summary(CAR_pts_list)
 CARA_res=list_summary(CARA_pts_list)
 NEW_res=list_summary(NEW_pts_list)
+
+res_table=data.frame(rbind(CR_res,CAR_res,CARA_res,NEW_res))
+
+CR_event=event_summary(CR_pts_list)
+CAR_event=event_summary(CAR_pts_list)
+CARA_event=event_summary(CARA_pts_list)
+NEW_event=event_summary(NEW_pts_list)
+
+event_table=data.frame(rbind(CR_event,CAR_event,CARA_event,NEW_event))
+
 ```
 
 
@@ -662,11 +825,80 @@ CR_power=typeI_power("CR_power_data")
 ```
 
 ```{r}
-res_table=data.frame(rbind(CR_res,CAR_res,CARA_res,NEW_res))
 power_table=data.frame(cbind(c(CR_typeI,CR_power),c(CAR_typeI,CAR_power),
                   c(CARA_typeI,CARA_power),c(NEW_typeI,NEW_power)))
 
 write.xlsx(res_table, file="C:/Users/luore/iCloudDrive/Study/GWU/Paper Prof. Hu/Reproductions/Zhao_survival/event_res.xlsx", overwrite = TRUE)
 write.xlsx(power_table, file="C:/Users/luore/iCloudDrive/Study/GWU/Paper Prof. Hu/Reproductions/Zhao_survival/power_res.xlsx", overwrite = TRUE)
+```
+
+```{r}
+# Define the names and corresponding colors
+line_names <- c("CR", "HH", "CARA", "NEW")
+line_colors <- c("red", "green", "blue", "purple")
+x_values <- seq(0, 0.5, by=0.05)
+# Plot the data
+matplot(x_values,power_table, type = "l", lty = 1, col = line_colors, lwd = 2, 
+        xlab = "mu1-mu2", ylab = "power", main = "Power Plot",axes = FALSE)
+#Customize y-axis
+axis(1, at = seq(0, 0.5, by = 0.05));axis(2, at = seq(floor(min(event_table)), ceiling(max(event_table)), by = 0.1), las = 1)
+
+# Add a legend with names corresponding to colors
+legend("bottomright", legend = line_names, col = line_colors, lty = 1, lwd = 2, bty = "n")
+
+```
+
+```{r}
+event = function(list) {
+  event_table = matrix(0,10,2)
+  for (i in 1:10) {
+    event_vec = list_summary(list[[i]])[5:6]
+    event_table[i,]=event_vec
+  }
+  return(event_table)
+}
+
+event_table =data.frame(cbind(event(CR_power_data), event(CAR_power_data), event(CARA_power_data), event(NEW_powe_data)))
+event_table=event_table[,c(1,3,5,7,2,4,6,8)]
+# event_table=data.frame(apply(data.frame(event_table[,c(1,3,5,7,2,4,6,8)]),1,as.numeric))
+
+write.xlsx(event_table, file="C:/Users/luore/iCloudDrive/Study/GWU/Paper Prof. Hu/Reproductions/Zhao_survival/event_res.xlsx", overwrite = TRUE)
+```
+
+```{r}
+# Generate a random matrix with 8 columns and 10 rows
+set.seed(123)  # Set seed for reproducibility
+
+
+# Define the names and corresponding colors
+line_names <- c("Pair 1", "Pair 2", "Pair 3", "Pair 4")
+line_colors <- c("red", "green", "blue", "purple")
+line_types <- c("solid", "dashed")
+
+# Define the x-axis values
+x_values <- seq(0, 0.5, length.out = nrow(event_table))
+
+# Plot the data
+plot(x_values, event_table[,1], type = "l", lty = 1, col = line_colors[1], lwd = 2,
+     xlab = "X Axis", ylab = "Values", main = "Matrix Plot with Pairs")
+
+for (i in 1:4) {
+  lines(x_values, event_table[, 2*i-1], type = "l", lty = 1, col = line_colors[i], lwd = 2)
+  lines(x_values, event_table[, 2*i], type = "l", lty = 2, col = line_colors[i], lwd = 2)
+}
+
+# # Customize y-axis
+# y_min <- floor(min(event_table))
+# y_max <- ceiling(max(event_table))
+# y_interval <- (y_max - y_min) / 10
+# axis(2, at = seq(y_min, y_max, by = y_interval), las = 1)
+# 
+# # Customize x-axis
+# axis(1, at = seq(0, 0.5, by = 0.05))
+
+# Add a legend with names corresponding to colors and line types
+legend("bottomright", legend = c("Pair 1 Solid", "Pair 1 Dashed", "Pair 2 Solid", "Pair 2 Dashed", 
+                                 "Pair 3 Solid", "Pair 3 Dashed", "Pair 4 Solid", "Pair 4 Dashed"), 
+       col = rep(line_colors, each = 2), lty = rep(1:2, times = 4), lwd = 2, bty = "n")
 ```
 
