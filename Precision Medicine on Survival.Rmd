@@ -1,0 +1,445 @@
+---
+title: "CARA Cox"
+output: html_document
+date: "2024-08-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+```
+
+```{r}
+library(doParallel)
+library(foreach)
+library(carat)
+library(survival)
+library(openxlsx)
+```
+
+```{r functions}
+permuted_block = function(n, block_size = 4) {
+    assignments = numeric(n)
+    ts = c(1, 0)
+
+    num_full_blocks = n %/% block_size
+    remaining_patients = n %% block_size
+
+  if (remaining_patients %% 2 != 0) {
+    stop("Patient number must be even.")
+  }
+
+  for (i in 1:num_full_blocks) {
+    block = rep(ts, each = block_size / length(ts))
+    assignments[((i - 1) * block_size + 1):(i * block_size)] = sample(block)
+  }
+
+  if (remaining_patients == 2) {
+    last_block = sample(c("A", "B"))
+    assignments[(n - 1):n] = last_block
+  }
+
+  return(assignments)
+}
+
+Cox_generate_data = function(n, m0 = 20, k=2, beta) {
+  t = c(permuted_block(2 * m0), rep(NA, n - 2 * m0))
+  X = sample(c(1, -1), n, replace = T)
+  Z = replicate(k, sample(c(1, -1), n, replace = T))
+  HR = exp(cbind(t,(1-t),X,X*t,Z)%*%beta)
+  C=runif(n,0,1.5936)
+  U=runif(2*m0,0,1)
+  E=runif(2 * m0,0,1)
+  E=c(ifelse(E<=1/(1+HR),0,1),rep(NA, n - 2 * m0))
+  
+  patients=cbind(X, Z, t,HR,C,E)
+  colnames(patients)[1]="X"
+  colnames(patients)[2:(1+k)]=paste0("Z",1:k)
+  colnames(patients)[(2+k):ncol(patients)]=c("t","HR","C","E")
+  return(patients)
+}
+
+#Cox_generate_data(n=400,m0=20,k=2,beta=c(0.5,0.5,1, -1, 0.5, 0.5))
+
+list_summary=function(list){
+  NA_0AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1)}
+  NA_0AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0)}
+  NA_0BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1)}
+  NA_0BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0)}
+  
+  NA_1AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z1"]==1)}
+  NA_1AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z1"]==1)}
+  NA_1BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z1"]==1)}
+  NA_1BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z1"]==1)}
+  
+  NA_2AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z2"]==-1)}
+  NA_2AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z2"]==-1)}
+  NA_2BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z2"]==-1)}
+  NA_2BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z2"]==-1)}
+  
+  NA_3AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z1"]==1&dat[,"Z2"]==1)}
+  NA_3AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z1"]==1&dat[,"Z2"]==1)}
+  NA_3BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z1"]==1&dat[,"Z2"]==1)}
+  NA_3BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z1"]==1&dat[,"Z2"]==1)}
+  
+    NA_4AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z1"]==-1&dat[,"Z2"]==-1)}
+  NA_4AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z1"]==-1&dat[,"Z2"]==-1)}
+  NA_4BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z1"]==-1&dat[,"Z2"]==-1)}
+  NA_4BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z1"]==-1&dat[,"Z2"]==-1)}
+  
+  # E_0A=function(dat){sum(dat[,"E"]==1&dat[,"X"]==1)}
+  # E_0B=function(dat){sum(dat[,"E"]==1&dat[,"X"]==-1)}
+
+  
+  NA_0AA_res=lapply(list,NA_0AA)
+  NA_0AB_res=lapply(list,NA_0AB)
+  NA_0BA_res=lapply(list,NA_0BA)
+  NA_0BB_res=lapply(list,NA_0BB)
+  
+  NA_1AA_res=lapply(list,NA_1AA)
+  NA_1AB_res=lapply(list,NA_1AB)
+  NA_1BA_res=lapply(list,NA_1BA)
+  NA_1BB_res=lapply(list,NA_1BB)
+  
+  NA_2AA_res=lapply(list,NA_2AA)
+  NA_2AB_res=lapply(list,NA_2AB)
+  NA_2BA_res=lapply(list,NA_2BA)
+  NA_2BB_res=lapply(list,NA_2BB)
+  
+  NA_3AA_res=lapply(list,NA_3AA)
+  NA_3AB_res=lapply(list,NA_3AB)
+  NA_3BA_res=lapply(list,NA_3BA)
+  NA_3BB_res=lapply(list,NA_3BB)
+  
+  NA_4AA_res=lapply(list,NA_4AA)
+  NA_4AB_res=lapply(list,NA_4AB)
+  NA_4BA_res=lapply(list,NA_4BA)
+  NA_4BB_res=lapply(list,NA_4BB)
+  # E_0A_res=lapply(list,E_0A)
+  # E_0B_res=lapply(list,E_0B)
+  # E_1A_res=lapply(list,E_1A)
+  # E_1B_res=lapply(list,E_1B)
+  
+  res=cbind(c(
+      paste0(round(mean(do.call(c, NA_0AA_res)),0),"(",round(sd(do.call(c, NA_0AA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_0AB_res)),0),"(",round(sd(do.call(c, NA_0AB_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_0BA_res)),0),"(",round(sd(do.call(c, NA_0BA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_0BB_res)),0),"(",round(sd(do.call(c, NA_0BB_res)),1),")")),
+      
+            c(paste0(round(mean(do.call(c, NA_1AA_res)),0),"(",round(sd(do.call(c, NA_1AA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_1AB_res)),0),"(",round(sd(do.call(c, NA_1AB_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_1BA_res)),0),"(",round(sd(do.call(c, NA_1BA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_1BB_res)),0),"(",round(sd(do.call(c, NA_1BB_res)),1),")")),
+      
+              c(paste0(round(mean(do.call(c, NA_2AA_res)),0),"(",round(sd(do.call(c, NA_2AA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_2AB_res)),0),"(",round(sd(do.call(c, NA_2AB_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_2BA_res)),0),"(",round(sd(do.call(c, NA_2BA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_2BB_res)),0),"(",round(sd(do.call(c, NA_2BB_res)),1),")")),
+      
+              c(paste0(round(mean(do.call(c, NA_3AA_res)),0),"(",round(sd(do.call(c, NA_3AA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_3AB_res)),0),"(",round(sd(do.call(c, NA_3AB_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_3BA_res)),0),"(",round(sd(do.call(c, NA_3BA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_3BB_res)),0),"(",round(sd(do.call(c, NA_3BB_res)),1),")")),
+      
+                c(paste0(round(mean(do.call(c, NA_4AA_res)),0),"(",round(sd(do.call(c, NA_4AA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_4AB_res)),0),"(",round(sd(do.call(c, NA_4AB_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_4BA_res)),0),"(",round(sd(do.call(c, NA_4BA_res)),1),")"),
+            paste0(round(mean(do.call(c, NA_4BB_res)),0),"(",round(sd(do.call(c, NA_4BB_res)),1),")"))
+      )
+      # round(mean(do.call(c, E_0A_res)),0),
+      # round(mean(do.call(c, E_0B_res)),0)
+      # mean(do.call(c, E_1A_res)),
+      # mean(do.call(c, E_1B_res))
+  return(res)
+}
+
+
+event_summary=function(list){
+  E_0AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1)&dat[,"E"]==1}
+  E_0AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"E"]==1)}
+  E_0BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"E"]==1)}
+  E_0BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"E"]==1)}
+  
+  E_1AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z1"]==1&dat[,"E"]==1)}
+  E_1AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z1"]==1&dat[,"E"]==1)}
+  E_1BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z1"]==1&dat[,"E"]==1)}
+  E_1BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z1"]==1&dat[,"E"]==1)}
+  
+  E_2AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  E_2AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  E_2BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  E_2BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  
+  E_3AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z1"]==1&dat[,"Z2"]==1&dat[,"E"]==1)}
+  E_3AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z1"]==1&dat[,"Z2"]==1&dat[,"E"]==1)}
+  E_3BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z1"]==1&dat[,"Z2"]==1&dat[,"E"]==1)}
+  E_3BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z1"]==1&dat[,"Z2"]==1&dat[,"E"]==1)}
+  
+    E_4AA=function(dat){sum(dat[,"X"]==1&dat[,"t"]==1&dat[,"Z1"]==-1&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  E_4AB=function(dat){sum(dat[,"X"]==1&dat[,"t"]==0&dat[,"Z1"]==-1&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  E_4BA=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==1&dat[,"Z1"]==-1&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  E_4BB=function(dat){sum(dat[,"X"]==-1&dat[,"t"]==0&dat[,"Z1"]==-1&dat[,"Z2"]==-1&dat[,"E"]==1)}
+  
+  # E_0A=function(dat){sum(dat[,"E"]==1&dat[,"X"]==1)}
+  # E_0B=function(dat){sum(dat[,"E"]==1&dat[,"X"]==-1)}
+
+  
+  E_0AA_res=lapply(list,E_0AA)
+  E_0AB_res=lapply(list,E_0AB)
+  E_0BA_res=lapply(list,E_0BA)
+  E_0BB_res=lapply(list,E_0BB)
+  
+  E_1AA_res=lapply(list,E_1AA)
+  E_1AB_res=lapply(list,E_1AB)
+  E_1BA_res=lapply(list,E_1BA)
+  E_1BB_res=lapply(list,E_1BB)
+  
+  E_2AA_res=lapply(list,E_2AA)
+  E_2AB_res=lapply(list,E_2AB)
+  E_2BA_res=lapply(list,E_2BA)
+  E_2BB_res=lapply(list,E_2BB)
+  
+  E_3AA_res=lapply(list,E_3AA)
+  E_3AB_res=lapply(list,E_3AB)
+  E_3BA_res=lapply(list,E_3BA)
+  E_3BB_res=lapply(list,E_3BB)
+  
+  E_4AA_res=lapply(list,E_4AA)
+  E_4AB_res=lapply(list,E_4AB)
+  E_4BA_res=lapply(list,E_4BA)
+  E_4BB_res=lapply(list,E_4BB)
+  # E_0A_res=lapply(list,E_0A)
+  # E_0B_res=lapply(list,E_0B)
+  # E_1A_res=lapply(list,E_1A)
+  # E_1B_res=lapply(list,E_1B)
+  
+  res=cbind(c(
+      paste0(round(mean(do.call(c, E_0AA_res)),0),"(",round(sd(do.call(c, E_0AA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_0AB_res)),0),"(",round(sd(do.call(c, E_0AB_res)),1),")"),
+            paste0(round(mean(do.call(c, E_0BA_res)),0),"(",round(sd(do.call(c, E_0BA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_0BB_res)),0),"(",round(sd(do.call(c, E_0BB_res)),1),")")),
+      
+            c(paste0(round(mean(do.call(c, E_1AA_res)),0),"(",round(sd(do.call(c, E_1AA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_1AB_res)),0),"(",round(sd(do.call(c, E_1AB_res)),1),")"),
+            paste0(round(mean(do.call(c, E_1BA_res)),0),"(",round(sd(do.call(c, E_1BA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_1BB_res)),0),"(",round(sd(do.call(c, E_1BB_res)),1),")")),
+      
+              c(paste0(round(mean(do.call(c, E_2AA_res)),0),"(",round(sd(do.call(c, E_2AA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_2AB_res)),0),"(",round(sd(do.call(c, E_2AB_res)),1),")"),
+            paste0(round(mean(do.call(c, E_2BA_res)),0),"(",round(sd(do.call(c, E_2BA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_2BB_res)),0),"(",round(sd(do.call(c, E_2BB_res)),1),")")),
+      
+              c(paste0(round(mean(do.call(c, E_3AA_res)),0),"(",round(sd(do.call(c, E_3AA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_3AB_res)),0),"(",round(sd(do.call(c, E_3AB_res)),1),")"),
+            paste0(round(mean(do.call(c, E_3BA_res)),0),"(",round(sd(do.call(c, E_3BA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_3BB_res)),0),"(",round(sd(do.call(c, E_3BB_res)),1),")")),
+      
+                c(paste0(round(mean(do.call(c, E_4AA_res)),0),"(",round(sd(do.call(c, E_4AA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_4AB_res)),0),"(",round(sd(do.call(c, E_4AB_res)),1),")"),
+            paste0(round(mean(do.call(c, E_4BA_res)),0),"(",round(sd(do.call(c, E_4BA_res)),1),")"),
+            paste0(round(mean(do.call(c, E_4BB_res)),0),"(",round(sd(do.call(c, E_4BB_res)),1),")"))
+      )
+      # round(mean(do.call(c, E_0A_res)),0),
+      # round(mean(do.call(c, E_0B_res)),0)
+      # mean(do.call(c, E_1A_res)),
+      # mean(do.call(c, E_1B_res))
+  return(res)
+}
+```
+
+```{r}
+D1=Cox_generate_data(n=400,m0=40,k=2,beta=c(0.5,0.5,1, -1, 0.5, 0.5))
+D1_Cox=data.frame(D1[1:40,])
+cox_fit = coxph(Surv(rep(1,40), E) ~ t+(1-t)+X+t:X+Z1+Z2-1,data=D1_Cox)
+cox_surv_fit <- survfit(cox_fit)
+t <- 5
+baseline_surv <- summary(cox_surv_fit)$surv  # 提取基线生存概率
+time_points <- summary(cox_surv_fit)$time    # 基线生存函数的时间点
+
+new_patient_data <- data.frame(Z1 =1, Z2=-1, X=1)  # 假设Z=0.5, X=-0.3
+cox_surv_fit <- survfit(cox_fit, newdata = new_patient_data)
+cox_surv_fit$surv
+# 找到离t=5最近的基线生存概率
+baseline_surv_at_t <- baseline_surv[which.min(abs(time_points - t))]
+new_patient1 <- data.frame(Z1 =1,Z2=-1 ,X = 1, t = 1)
+new_patient0 <- data.frame(Z1 =1,Z2=-1 ,X = 1, t = 0)
+a=exp(predict(cox_fit, newdata = new_patient1, type = "lp"))
+b=exp(predict(cox_fit, newdata = new_patient0, type = "lp"))
+a/(a+b)
+linear_predictor_future <- predict(cox_fit, newdata = future_data, type = "lp")
+hazard_ratio_future <- exp(linear_predictor_future)
+
+new_patient <- data.frame(Z1 =1,Z2=-1 ,X = 1, t = 1)
+predict(cox_surv_fit,new_patient)
+cox_surv_fit <- survfit(cox_fit, newdata = new_patient)
+summary(cox_surv_fit)
+surv_prob <- summary(cox_surv_fit, times = observed_times[1])$surv
+```
+
+
+```{r}
+#r=81
+#data=D1
+Cox_CARA=function(data,m0 = 20 ,beta){
+  for (r in (2*m0+1):nrow(data)){
+    D1_Cox=data.frame(data[1:(r-1),])
+    cox_fit = coxph(Surv(rep(1,r-1), E) ~ t+(1-t)+X+t:X+Z1+Z2-1,data=D1_Cox)
+    new_patient=data[r,c("X","Z1","Z2","t")]
+    new_patient1=data.frame(t(replace(new_patient,4,1)))
+    new_patient0=data.frame(t(replace(new_patient,4,0)))
+    
+    hazard1=exp(predict(cox_fit, newdata = new_patient1, type = "lp"))
+    hazard0=exp(predict(cox_fit, newdata = new_patient0, type = "lp"))
+    
+    rho=hazard0/(hazard1+hazard0)
+    
+    data[r,"t"]=sample(c(1,0),1,prob = c(rho,1-rho))
+    new_patient_data= data.frame(t(data[r,c("X","Z1","Z2","t")]))
+    cox_surv_fit =survfit(cox_fit, newdata = new_patient_data)
+    surv_prob=cox_surv_fit$surv
+    
+    data[r, "E"] =sample(c(0,1),1,replace = T,prob = c(surv_prob,1-surv_prob))
+  }
+  
+  return(data)
+}
+```
+
+```{r}
+no_cores <- detectCores()
+registerDoParallel(cores=no_cores)
+
+cox_pts_list <- foreach(i = 1:100, .export = ls(envir = globalenv()),.packages = "survival") %dopar% {
+  Cox_CARA(
+    data = Cox_generate_data(
+      1000,
+      k = 2,
+      beta=c(0.5,0.5,1, -1, 0.5, 0.5)
+    ),
+    beta=c(0.5,0.5,1, -1, 0.5, 0.5)
+  )
+}
+
+list_summary(cox_pts_list)
+event_summary(cox_pts_list)
+```
+
+
+```{r}
+New_Cox_CARA=function(data,m0 = 20 ,k=2,beta,omega=rep(0.25,4),p=0.8){
+  for (r in (2*m0+1):nrow(data)){
+    Xn = data[r, 1]
+    Zn = data[r, 2:3]
+    
+    data_before = data[1:(r - 1), ]
+    data_before_Xn=data.frame(data_before[data_before[, "X"]==Xn,])
+    
+    cox_fit_Xn = coxph(Surv(rep(1,nrow(data_before_Xn)), E) ~ t+(1-t)+X+t:X+Z1+Z2-1,data=data_before_Xn)
+    
+    data_before_1 = rbind(data_before, data[r, ])
+    data_before_1[r, "t"] = 1
+    
+    data_before_0 = rbind(data_before, data[r, ])
+    data_before_0[r, "t"] = 0
+    
+    new_patient1=data.frame(t(data_before_1[r,c("X","Z1","Z2","t")]))
+    new_patient0=data.frame(t(data_before_0[r,c("X","Z1","Z2","t")]))
+    
+    hazard1_Xn=exp(predict(cox_fit_Xn, newdata = new_patient1, type = "lp"))
+    hazard0_Xn=exp(predict(cox_fit_Xn, newdata = new_patient0, type = "lp"))
+    
+    rho=1-hazard1_Xn/(hazard1_Xn+hazard0_Xn)
+    
+    Dn1 = sum(data_before_1[, "t"] == 1 &
+                data_before_1[, "X"] == Xn) - rho * sum(data_before_1[, "X"] == Xn)
+    Dn2 = sum(data_before_0[, "t"] == 1 &
+                data_before_0[, "X"] == Xn) - rho * sum(data_before_0[, "X"] == Xn)
+    
+    Dn1k = numeric()
+    Dn2k = numeric()
+    for (cov in 1:k) {
+      append(
+        Dn1k,
+        sum(
+          data_before_1[, "t"] == 1 &
+            data_before_1[, "X"] == Xn &
+            data_before_1[, paste0("Z", cov)] == Zn[cov]
+        ) -
+          rho * sum(data_before_1[, "X"] == Xn &
+                      data_before_1[, paste0("Z", cov)] == Zn[cov])
+      )
+
+      append(
+        Dn2k,
+        sum(
+          data_before_0[, "t"] == 1 &
+            data_before_0[, "X"] == Xn &
+            data_before_0[, paste0("Z", cov)] == Zn[cov]
+        ) -
+          rho * sum(data_before_0[, "X"] == Xn &
+                      data_before_0[, paste0("Z", cov)] == Zn[cov])
+      )
+    }
+
+    Dn1k1k2 = sum(data_before_1[, "t"] == 1 &
+                    data_before_1[, "X"] == Xn &
+                    setequal(data_before_1[, paste0("Z", 1:k)], Zn)) -
+      rho * sum(data_before_1[, "X"] == Xn &
+                  setequal(data_before_1[, paste0("Z", 1:k)], Zn))
+
+    Dn2k1k2 = sum(data_before_0[, "t"] == 1 &
+                    data_before_0[, "X"] == Xn &
+                    setequal(data_before_0[, paste0("Z", 1:k)], Zn)) -
+      rho * sum(data_before_0[, "X"] == Xn &
+                  setequal(data_before_0[, paste0("Z", 1:k)], Zn))
+
+    Imbn1 = omega[1] * Dn1 ^ 2 + sum(omega[2:(length(omega) - 1)] * Dn1k ^
+                                       2) + omega[length(omega)] * Dn1k1k2 ^ 2
+    Imbn2 = omega[1] * Dn2 ^ 2 + sum(omega[2:(length(omega) - 1)] * Dn2k ^
+                                       2) + omega[length(omega)] * Dn2k1k2 ^ 2
+
+    if (is.na(Imbn1 > Imbn2) |
+        is.na(Imbn1 < Imbn2) |
+        is.na(Imbn1 == Imbn2)) {
+      data[r, "t"] = sample(c(1, 0), 1, prob = c(0.5, 0.5))
+    }
+    else if (Imbn1 > Imbn2) {
+      data[r, "t"] = sample(c(1, 0), 1, prob = c(1 - p, p))
+    }
+    else if (Imbn1 == Imbn2) {
+      data[r, "t"] = sample(c(1, 0), 1, prob = c(0.5, 0.5))
+    }
+    else if (Imbn1 < Imbn2) {
+      data[r, "t"] = sample(c(1, 0), 1, prob = c(p, 1 - p))
+    }
+    
+    new_patient_data= data.frame(t(data[r,c("X","Z1","Z2","t")]))
+    cox_surv_fit =survfit(cox_fit_Xn, newdata = new_patient_data)
+    surv_prob=cox_surv_fit$surv
+    
+    data[r, "E"] =sample(c(0,1),1,replace = T,prob = c(surv_prob,1-surv_prob))
+    
+  }
+  
+  return(data)
+}
+```
+
+```{r}
+no_cores <- detectCores()
+registerDoParallel(cores=no_cores)
+
+new_cox_pts_list <- foreach(i = 1:100, .export = ls(envir = globalenv()),.packages = "survival") %dopar% {
+  New_Cox_CARA(
+    data = Cox_generate_data(
+      1000,
+      k = 2,
+      beta=c(0.5,0.5,1, -1, 0.5, 0.5)
+    ),
+    beta=c(0.5,0.5,1, -1, 0.5, 0.5)
+  )
+}
+
+list_summary(new_cox_pts_list)
+event_summary(new_cox_pts_list)
+```
+
